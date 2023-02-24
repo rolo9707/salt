@@ -18,30 +18,32 @@ def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for service beacon should be a list of dicts
     if not isinstance(config, list):
         return False, "Configuration for service beacon must be a list."
-    else:
-        config = salt.utils.beacons.list_to_dict(config)
+    config = salt.utils.beacons.list_to_dict(config)
 
-        if "services" not in config:
-            return False, "Configuration for service beacon requires services."
-        else:
-            if not isinstance(config["services"], dict):
-                return (
+    if "services" not in config:
+        return False, "Configuration for service beacon requires services."
+    return (
+        next(
+            (
+                (
                     False,
-                    "Services configuration item for service beacon must "
-                    "be a dictionary.",
+                    "Configuration for service beacon must "
+                    "be a list of dictionaries.",
                 )
-            for config_item in config["services"]:
-                if not isinstance(config["services"][config_item], dict):
-                    return (
-                        False,
-                        "Configuration for service beacon must "
-                        "be a list of dictionaries.",
-                    )
-
-    return True, "Valid beacon configuration"
+                for config_item in config["services"]
+                if not isinstance(config["services"][config_item], dict)
+            ),
+            (True, "Valid beacon configuration"),
+        )
+        if isinstance(config["services"], dict)
+        else (
+            False,
+            "Services configuration item for service beacon must "
+            "be a dictionary.",
+        )
+    )
 
 
 def beacon(config):
@@ -109,11 +111,9 @@ def beacon(config):
     config = salt.utils.beacons.list_to_dict(config)
 
     for service in config.get("services", {}):
-        ret_dict = {}
-
         service_config = config["services"][service]
 
-        ret_dict[service] = {"running": __salt__["service.status"](service)}
+        ret_dict = {service: {"running": __salt__["service.status"](service)}}
         ret_dict["service_name"] = service
         ret_dict["tag"] = service
         currtime = time.time()
@@ -137,9 +137,7 @@ def beacon(config):
         # as well as if the config for the beacon asks for it
         if "uncleanshutdown" in service_config and not ret_dict[service]["running"]:
             filename = service_config["uncleanshutdown"]
-            ret_dict[service]["uncleanshutdown"] = (
-                True if os.path.exists(filename) else False
-            )
+            ret_dict[service]["uncleanshutdown"] = bool(os.path.exists(filename))
         if "onchangeonly" in service_config and service_config["onchangeonly"] is True:
             if service not in LAST_STATUS:
                 if not service_config["emitatstartup"]:

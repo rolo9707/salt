@@ -35,12 +35,7 @@ def _to_list(obj):
     """
     Convert snetinfo object to list
     """
-    ret = {}
-
-    for attr in __attrs:
-        if hasattr(obj, attr):
-            ret[attr] = getattr(obj, attr)
-    return ret
+    return {attr: getattr(obj, attr) for attr in __attrs if hasattr(obj, attr)}
 
 
 def __virtual__():
@@ -56,6 +51,10 @@ def validate(config):
     Validate the beacon configuration
     """
 
+    if not isinstance(config, list):
+        return False, "Configuration for network_info beacon must be a list."
+    config = salt.utils.beacons.list_to_dict(config)
+
     VALID_ITEMS = [
         "type",
         "bytes_sent",
@@ -68,26 +67,18 @@ def validate(config):
         "dropout",
     ]
 
-    # Configuration for load beacon should be a list of dicts
-    if not isinstance(config, list):
-        return False, "Configuration for network_info beacon must be a list."
-    else:
-
-        config = salt.utils.beacons.list_to_dict(config)
-
-        for item in config.get("interfaces", {}):
-            if not isinstance(config["interfaces"][item], dict):
-                return (
-                    False,
-                    "Configuration for network_info beacon must "
-                    "be a list of dictionaries.",
-                )
-            else:
-                if not any(j in VALID_ITEMS for j in config["interfaces"][item]):
-                    return (
-                        False,
-                        "Invalid configuration item in Beacon configuration.",
-                    )
+    for item in config.get("interfaces", {}):
+        if not isinstance(config["interfaces"][item], dict):
+            return (
+                False,
+                "Configuration for network_info beacon must "
+                "be a list of dictionaries.",
+            )
+        if all(j not in VALID_ITEMS for j in config["interfaces"][item]):
+            return (
+                False,
+                "Invalid configuration item in Beacon configuration.",
+            )
     return True, "Valid beacon configuration"
 
 
@@ -171,11 +162,10 @@ def beacon(config):
                             _diff = True
                         else:
                             log.debug("attr %s", getattr(_if_stats, attr, None))
-                    else:
-                        if getattr(_if_stats, attr, None) == int(
+                    elif getattr(_if_stats, attr, None) == int(
                             interface_config[attr]
                         ):
-                            _diff = True
+                        _diff = True
             if _diff:
                 ret.append(
                     {"interface": interface, "network_info": _to_list(_if_stats)}

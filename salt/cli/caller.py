@@ -70,12 +70,11 @@ class BaseCaller:
         """
         docs = {}
         for name, func in self.minion.functions.items():
-            if name not in docs:
-                if func.__doc__:
-                    docs[name] = func.__doc__
+            if name not in docs and func.__doc__:
+                docs[name] = func.__doc__
         for name in sorted(docs):
             if name.startswith(self.opts.get("fun", "")):
-                salt.utils.stringutils.print_cli("{}:\n{}\n".format(name, docs[name]))
+                salt.utils.stringutils.print_cli(f"{name}:\n{docs[name]}\n")
 
     def print_grains(self):
         """
@@ -123,15 +122,13 @@ class BaseCaller:
         """
         Call the module
         """
-        ret = {}
         fun = self.opts["fun"]
-        ret["jid"] = salt.utils.jid.gen_jid(self.opts)
+        ret = {"jid": salt.utils.jid.gen_jid(self.opts)}
         proc_fn = os.path.join(
             salt.minion.get_proc_dir(self.opts["cachedir"]), ret["jid"]
         )
         if fun not in self.minion.functions:
-            docs = self.minion.functions["sys.doc"]("{}*".format(fun))
-            if docs:
+            if docs := self.minion.functions["sys.doc"](f"{fun}*"):
                 docs[fun] = self.minion.functions.missing_fun_string(fun)
                 ret["out"] = "nested"
                 ret["return"] = docs
@@ -140,9 +137,7 @@ class BaseCaller:
             mod_name = fun.split(".")[0]
             if mod_name in self.minion.function_errors:
                 sys.stderr.write(
-                    " Possible reasons: {}\n".format(
-                        self.minion.function_errors[mod_name]
-                    )
+                    f" Possible reasons: {self.minion.function_errors[mod_name]}\n"
                 )
             else:
                 sys.stderr.write("\n")
@@ -174,13 +169,11 @@ class BaseCaller:
                 pass
             except OSError:
                 sys.stderr.write(
-                    "Cannot write to process directory. "
-                    "Do you have permissions to "
-                    "write to {} ?\n".format(proc_fn)
+                    f"Cannot write to process directory. Do you have permissions to write to {proc_fn} ?\n"
                 )
             func = self.minion.functions[fun]
             data = {"arg": args, "fun": fun}
-            data.update(kwargs)
+            data |= kwargs
             executors = getattr(
                 self.minion, "module_executors", []
             ) or salt.utils.args.yamlify_arg(
@@ -194,20 +187,16 @@ class BaseCaller:
                 executors = [executors]
             try:
                 for name in executors:
-                    fname = "{}.execute".format(name)
+                    fname = f"{name}.execute"
                     if fname not in self.minion.executors:
-                        raise SaltInvocationError(
-                            "Executor '{}' is not available".format(name)
-                        )
+                        raise SaltInvocationError(f"Executor '{name}' is not available")
                     ret["return"] = self.minion.executors[fname](
                         self.opts, data, func, args, kwargs
                     )
                     if ret["return"] is not None:
                         break
             except TypeError as exc:
-                sys.stderr.write(
-                    "\nPassed invalid arguments: {}.\n\nUsage:\n".format(exc)
-                )
+                sys.stderr.write(f"\nPassed invalid arguments: {exc}.\n\nUsage:\n")
                 salt.utils.stringutils.print_cli(func.__doc__)
                 active_level = LOG_LEVELS.get(
                     self.opts["log_level"].lower(), logging.ERROR
@@ -272,7 +261,7 @@ class BaseCaller:
                 continue
             try:
                 ret["success"] = True
-                self.minion.returners["{}.returner".format(returner)](ret)
+                self.minion.returners[f"{returner}.returner"](ret)
             except Exception:  # pylint: disable=broad-except
                 pass
 

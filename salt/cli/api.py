@@ -57,10 +57,7 @@ class SaltAPI(parsers.SaltAPIParser):
         """
         log.info("The salt-api is shutting down..")
         msg = "The salt-api is shutdown. "
-        if exitmsg is not None:
-            exitmsg = msg + exitmsg
-        else:
-            exitmsg = msg.strip()
+        exitmsg = msg + exitmsg if exitmsg is not None else msg.strip()
         super().shutdown(exitcode, exitmsg)
 
     def _handle_signals(self, signum, sigframe):

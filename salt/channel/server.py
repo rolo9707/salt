@@ -133,18 +133,10 @@ class ReqServerChannel:
                 raise salt.ext.tornado.gen.Return("bad load: id contains a null byte")
         except TypeError:
             log.error("Payload contains non-string id: %s", payload)
-            raise salt.ext.tornado.gen.Return(
-                "bad load: id {} is not a string".format(id_)
-            )
+            raise salt.ext.tornado.gen.Return(f"bad load: id {id_} is not a string")
 
-        version = 0
-        if "version" in payload:
-            version = payload["version"]
-
-        sign_messages = False
-        if version > 1:
-            sign_messages = True
-
+        version = payload["version"] if "version" in payload else 0
+        sign_messages = version > 1
         # intercept the "_auth" commands, since the main daemon shouldn't know
         # anything about our key auth
         if payload["enc"] == "clear" and payload.get("load", {}).get("cmd") == "_auth":
@@ -152,10 +144,7 @@ class ReqServerChannel:
                 self._auth(payload["load"], sign_messages)
             )
 
-        nonce = None
-        if version > 1:
-            nonce = payload["load"].pop("nonce", None)
-
+        nonce = payload["load"].pop("nonce", None) if version > 1 else None
         # TODO: test
         try:
             # Take the payload_handler function that was registered when we created the channel

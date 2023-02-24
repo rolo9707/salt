@@ -15,12 +15,11 @@ LAST_STATUS = {}
 
 
 def __virtual__():
-    if salt.utils.platform.is_windows():
-        err_msg = "Not available for Windows systems."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
-    else:
+    if not salt.utils.platform.is_windows():
         return __virtualname__
+    err_msg = "Not available for Windows systems."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def validate(config):
@@ -28,53 +27,50 @@ def validate(config):
     Validate the beacon configuration
     """
 
-    # Configuration for load beacon should be a list of dicts
     if not isinstance(config, list):
         return False, "Configuration for load beacon must be a list."
-    else:
-        config = salt.utils.beacons.list_to_dict(config)
+    config = salt.utils.beacons.list_to_dict(config)
 
-        if "emitatstartup" in config:
-            if not isinstance(config["emitatstartup"], bool):
-                return (
-                    False,
-                    "Configuration for load beacon option emitatstartup must be a"
-                    " boolean.",
-                )
+    if "emitatstartup" in config and not isinstance(
+        config["emitatstartup"], bool
+    ):
+        return (
+            False,
+            "Configuration for load beacon option emitatstartup must be a"
+            " boolean.",
+        )
 
-        if "onchangeonly" in config:
-            if not isinstance(config["onchangeonly"], bool):
-                return (
-                    False,
-                    "Configuration for load beacon option onchangeonly must be a"
-                    " boolean.",
-                )
+    if "onchangeonly" in config and not isinstance(
+        config["onchangeonly"], bool
+    ):
+        return (
+            False,
+            "Configuration for load beacon option onchangeonly must be a"
+            " boolean.",
+        )
 
-        if "averages" not in config:
-            return False, "Averages configuration is required for load beacon."
-        else:
+    if "averages" not in config:
+        return False, "Averages configuration is required for load beacon."
+    if all(j not in ["1m", "5m", "15m"] for j in config.get("averages", {})):
+        return (
+            False,
+            "Averages configuration for load beacon must contain 1m, 5m or 15m"
+            " items.",
+        )
 
-            if not any(j in ["1m", "5m", "15m"] for j in config.get("averages", {})):
-                return (
-                    False,
-                    "Averages configuration for load beacon must contain 1m, 5m or 15m"
-                    " items.",
-                )
-
-            for item in ["1m", "5m", "15m"]:
-                if not isinstance(config["averages"][item], list):
-                    return (
-                        False,
-                        "Averages configuration for load beacon: 1m, 5m and 15m items"
-                        " must be a list of two items.",
-                    )
-                else:
-                    if len(config["averages"][item]) != 2:
-                        return (
-                            False,
-                            "Configuration for load beacon: 1m, 5m and 15m items must"
-                            " be a list of two items.",
-                        )
+    for item in ["1m", "5m", "15m"]:
+        if not isinstance(config["averages"][item], list):
+            return (
+                False,
+                "Averages configuration for load beacon: 1m, 5m and 15m items"
+                " must be a list of two items.",
+            )
+        if len(config["averages"][item]) != 2:
+            return (
+                False,
+                "Configuration for load beacon: 1m, 5m and 15m items must"
+                " be a list of two items.",
+            )
 
     return True, "Valid beacon configuration"
 
@@ -128,13 +124,12 @@ def beacon(config):
     avg_keys = ["1m", "5m", "15m"]
     avg_dict = dict(zip(avg_keys, avgs))
 
-    if config["onchangeonly"]:
-        if not LAST_STATUS:
-            for k in ["1m", "5m", "15m"]:
-                LAST_STATUS[k] = avg_dict[k]
-            if not config["emitatstartup"]:
-                log.debug("Don't emit because emitatstartup is False")
-                return ret
+    if config["onchangeonly"] and not LAST_STATUS:
+        for k in ["1m", "5m", "15m"]:
+            LAST_STATUS[k] = avg_dict[k]
+        if not config["emitatstartup"]:
+            log.debug("Don't emit because emitatstartup is False")
+            return ret
 
     send_beacon = False
 
@@ -168,19 +163,17 @@ def beacon(config):
                     )
                     send_beacon = True
                     break
-            else:
-                # Emit no matter LAST_STATUS
-                if float(avg_dict[k]) < float(config["averages"][k][0]) or float(
+            elif float(avg_dict[k]) < float(config["averages"][k][0]) or float(
                     avg_dict[k]
                 ) > float(config["averages"][k][1]):
-                    log.debug(
-                        "Emit because %f < %f or > %f",
-                        float(avg_dict[k]),
-                        float(config["averages"][k][0]),
-                        float(config["averages"][k][1]),
-                    )
-                    send_beacon = True
-                    break
+                log.debug(
+                    "Emit because %f < %f or > %f",
+                    float(avg_dict[k]),
+                    float(config["averages"][k][0]),
+                    float(config["averages"][k][1]),
+                )
+                send_beacon = True
+                break
 
     if config["onchangeonly"]:
         for k in ["1m", "5m", "15m"]:

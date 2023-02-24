@@ -142,11 +142,9 @@ def run_query(conn, query, args=None, retries=3):
         )
     except Exception as e:  # pylint: disable=broad-except
         if len(query) > 150:
-            query = query[:150] + "<...>"
+            query = f"{query[:150]}<...>"
         raise SaltCacheError(
-            "Error running {}{}: {}".format(
-                query, "- args: {}".format(args) if args else "", e
-            )
+            f'Error running {query}{f"- args: {args}" if args else ""}: {e}'
         )
 
 
@@ -182,9 +180,7 @@ def _create_table():
         )
         r = cur.fetchone()
         cur.close()
-        if r[0] == 1:
-            return
-        else:
+        if r[0] != 1:
             query = """
             ALTER TABLE {}.{}
             ADD COLUMN last_update TIMESTAMP NOT NULL
@@ -195,8 +191,7 @@ def _create_table():
             )
             cur, _ = run_query(__context__["mysql_client"], query)
             cur.close()
-            return
-
+        return
     query = """CREATE TABLE IF NOT EXISTS {} (
       bank CHAR(255),
       etcd_key CHAR(255),
@@ -220,7 +215,6 @@ def _init_client():
 
     opts = copy.deepcopy(__opts__)
     mysql_kwargs = {
-        "autocommit": True,
         "host": opts.pop("mysql.host", "127.0.0.1"),
         "user": opts.pop("mysql.user", None),
         "passwd": opts.pop("mysql.password", None),
@@ -228,9 +222,8 @@ def _init_client():
         "port": opts.pop("mysql.port", 3306),
         "unix_socket": opts.pop("mysql.unix_socket", None),
         "connect_timeout": opts.pop("mysql.connect_timeout", None),
+        "autocommit": True,
     }
-    mysql_kwargs["autocommit"] = True
-
     __context__["mysql_table_name"] = opts.pop("mysql.table_name", "salt")
 
     # Gather up any additional MySQL configuration options
@@ -258,15 +251,13 @@ def store(bank, key, data):
     """
     _init_client()
     data = salt.payload.dumps(data)
-    query = "REPLACE INTO {} (bank, etcd_key, data) values(%s,%s,%s)".format(
-        __context__["mysql_table_name"]
-    )
+    query = f'REPLACE INTO {__context__["mysql_table_name"]} (bank, etcd_key, data) values(%s,%s,%s)'
     args = (bank, key, data)
 
     cur, cnt = run_query(__context__.get("mysql_client"), query, args=args)
     cur.close()
     if cnt not in (1, 2):
-        raise SaltCacheError("Error storing {} {} returned {}".format(bank, key, cnt))
+        raise SaltCacheError(f"Error storing {bank} {key} returned {cnt}")
 
 
 def fetch(bank, key):
@@ -274,15 +265,11 @@ def fetch(bank, key):
     Fetch a key value.
     """
     _init_client()
-    query = "SELECT data FROM {} WHERE bank=%s AND etcd_key=%s".format(
-        __context__["mysql_table_name"]
-    )
+    query = f'SELECT data FROM {__context__["mysql_table_name"]} WHERE bank=%s AND etcd_key=%s'
     cur, _ = run_query(__context__.get("mysql_client"), query, args=(bank, key))
     r = cur.fetchone()
     cur.close()
-    if r is None:
-        return {}
-    return salt.payload.loads(r[0])
+    return {} if r is None else salt.payload.loads(r[0])
 
 
 def flush(bank, key=None):
@@ -290,7 +277,7 @@ def flush(bank, key=None):
     Remove the key from the cache bank with all the key content.
     """
     _init_client()
-    query = "DELETE FROM {} WHERE bank=%s".format(__context__["mysql_table_name"])
+    query = f'DELETE FROM {__context__["mysql_table_name"]} WHERE bank=%s'
     if key is None:
         data = (bank,)
     else:
@@ -307,9 +294,7 @@ def ls(bank):
     bank.
     """
     _init_client()
-    query = "SELECT etcd_key FROM {} WHERE bank=%s".format(
-        __context__["mysql_table_name"]
-    )
+    query = f'SELECT etcd_key FROM {__context__["mysql_table_name"]} WHERE bank=%s'
     cur, _ = run_query(__context__.get("mysql_client"), query, args=(bank,))
     out = [row[0] for row in cur.fetchall()]
     cur.close()
@@ -323,14 +308,10 @@ def contains(bank, key):
     _init_client()
     if key is None:
         data = (bank,)
-        query = "SELECT COUNT(data) FROM {} WHERE bank=%s".format(
-            __context__["mysql_table_name"]
-        )
+        query = f'SELECT COUNT(data) FROM {__context__["mysql_table_name"]} WHERE bank=%s'
     else:
         data = (bank, key)
-        query = "SELECT COUNT(data) FROM {} WHERE bank=%s AND etcd_key=%s".format(
-            __context__["mysql_table_name"]
-        )
+        query = f'SELECT COUNT(data) FROM {__context__["mysql_table_name"]} WHERE bank=%s AND etcd_key=%s'
     cur, _ = run_query(__context__.get("mysql_client"), query, args=data)
     r = cur.fetchone()
     cur.close()
@@ -343,10 +324,7 @@ def updated(bank, key):
     key.
     """
     _init_client()
-    query = (
-        "SELECT UNIX_TIMESTAMP(last_update) FROM {} WHERE bank=%s "
-        "AND etcd_key=%s".format(__context__["mysql_table_name"])
-    )
+    query = f'SELECT UNIX_TIMESTAMP(last_update) FROM {__context__["mysql_table_name"]} WHERE bank=%s AND etcd_key=%s'
     data = (bank, key)
     cur, _ = run_query(__context__["mysql_client"], query=query, args=data)
     r = cur.fetchone()

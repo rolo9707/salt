@@ -24,12 +24,11 @@ __virtualname__ = "diskusage"
 
 
 def __virtual__():
-    if HAS_PSUTIL is False:
-        err_msg = "psutil library is missing."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
-    else:
+    if HAS_PSUTIL is not False:
         return __virtualname__
+    err_msg = "psutil library is missing."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def validate(config):
@@ -37,9 +36,11 @@ def validate(config):
     Validate the beacon configuration
     """
     # Configuration for diskusage beacon should be a list of dicts
-    if not isinstance(config, list):
-        return False, "Configuration for diskusage beacon must be a list."
-    return True, "Valid beacon configuration"
+    return (
+        (True, "Valid beacon configuration")
+        if isinstance(config, list)
+        else (False, "Configuration for diskusage beacon must be a list.")
+    )
 
 
 def beacon(config):
@@ -94,7 +95,7 @@ def beacon(config):
         # if our mount doesn't end with a $, insert one.
         mount_re = mount
         if not mount.endswith("$"):
-            mount_re = "{}$".format(mount)
+            mount_re = f"{mount}$"
 
         if salt.utils.platform.is_windows():
             # mount_re comes in formatted with a $ at the end

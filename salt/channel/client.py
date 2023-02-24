@@ -142,9 +142,7 @@ class AsyncReqChannel:
 
     @property
     def crypt(self):
-        if self.auth:
-            return "aes"
-        return "clear"
+        return "aes" if self.auth else "clear"
 
     @property
     def ttype(self):
@@ -298,9 +296,8 @@ class AsyncReqChannel:
                 log.error("Failed to send msg %r", exc)
                 if _try >= tries:
                     raise
-                else:
-                    _try += 1
-                    continue
+                _try += 1
+                continue
         raise salt.ext.tornado.gen.Return(ret)
 
     def close(self):
@@ -395,14 +392,11 @@ class AsyncPubChannel:
             yield self.transport.connect(
                 publish_port, self.connect_callback, self.disconnect_callback
             )
-        # TODO: better exception handling...
         except KeyboardInterrupt:  # pylint: disable=try-except-raise
             raise
         except Exception as exc:  # pylint: disable=broad-except
             if "-|RETRY|-" not in str(exc):
-                raise salt.exceptions.SaltClientError(
-                    "Unable to sign_in to master: {}".format(exc)
-                )  # TODO: better error message
+                raise salt.exceptions.SaltClientError(f"Unable to sign_in to master: {exc}")
 
     def close(self):
         """
@@ -489,14 +483,10 @@ class AsyncPubChannel:
                 # On reconnects, fire a master event to notify that the minion is
                 # available.
                 if self.opts.get("__role") == "syndic":
-                    data = "Syndic {} started at {}".format(
-                        self.opts["id"], time.asctime()
-                    )
+                    data = f'Syndic {self.opts["id"]} started at {time.asctime()}'
                     tag = salt.utils.event.tagify([self.opts["id"], "start"], "syndic")
                 else:
-                    data = "Minion {} started at {}".format(
-                        self.opts["id"], time.asctime()
-                    )
+                    data = f'Minion {self.opts["id"]} started at {time.asctime()}'
                     tag = salt.utils.event.tagify([self.opts["id"], "start"], "minion")
                 load = {
                     "id": self.opts["id"],

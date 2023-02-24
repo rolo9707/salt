@@ -22,9 +22,9 @@ def _run_proxy_processes(proxies):
         result = {}
         if not __salt__["salt_proxy.is_running"](proxy)["result"]:
             __salt__["salt_proxy.configure_proxy"](proxy, start=True)
-            result[proxy] = "Proxy {} was started".format(proxy)
+            result[proxy] = f"Proxy {proxy} was started"
         else:
-            msg = "Proxy {} is already running".format(proxy)
+            msg = f"Proxy {proxy} is already running"
             result[proxy] = msg
             log.debug(msg)
         ret.append(result)
@@ -45,9 +45,8 @@ def validate(config):
 
         if "proxies" not in config:
             return False, "Configuration for salt_proxy beacon requires proxies."
-        else:
-            if not isinstance(config["proxies"], dict):
-                return False, "Proxies for salt_proxy beacon must be a dictionary."
+        if not isinstance(config["proxies"], dict):
+            return False, "Proxies for salt_proxy beacon must be a dictionary."
     return True, "Valid beacon configuration"
 
 

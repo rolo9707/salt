@@ -61,10 +61,7 @@ def fetch(username, password):
     if result["status"] == 200:
         log.debug("eauth REST call returned 200: %s", result)
         # Call is successful if None no acl data
-        if result["dict"] is not None:
-            return result["dict"]
-        else:
-            return []
+        return result["dict"] if result["dict"] is not None else []
     else:
         log.debug("eauth REST call failed: %s", result)
         return False
@@ -93,8 +90,7 @@ def acl(username, **kwargs):
 
     # Get ACL from REST API
     eauth_rest_acl = []
-    result = fetch(username, kwargs["password"])
-    if result:
+    if result := fetch(username, kwargs["password"]):
         eauth_rest_acl = result
         log.debug("acl from rest for user %s: %s", username, eauth_rest_acl)
 
@@ -104,7 +100,4 @@ def acl(username, **kwargs):
     # We have to make the .get's above return [] since we can't merge a
     # possible list and None. So if merged_acl is falsey we return None so
     # other eauth's can return an acl.
-    if not merged_acl:
-        return None
-    else:
-        return merged_acl
+    return merged_acl or None

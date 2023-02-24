@@ -119,33 +119,27 @@ def store(bank, key, data):
     """
     Store a key value.
     """
-    c_key = "{}/{}".format(bank, key)
-    tstamp_key = "{}/{}{}".format(bank, key, _tstamp_suffix)
+    c_key = f"{bank}/{key}"
+    tstamp_key = f"{bank}/{key}{_tstamp_suffix}"
 
     try:
         c_data = salt.payload.dumps(data)
         api.kv.put(c_key, c_data)
         api.kv.put(tstamp_key, salt.payload.dumps(int(time.time())))
     except Exception as exc:  # pylint: disable=broad-except
-        raise SaltCacheError(
-            "There was an error writing the key, {}: {}".format(c_key, exc)
-        )
+        raise SaltCacheError(f"There was an error writing the key, {c_key}: {exc}")
 
 
 def fetch(bank, key):
     """
     Fetch a key value.
     """
-    c_key = "{}/{}".format(bank, key)
+    c_key = f"{bank}/{key}"
     try:
         _, value = api.kv.get(c_key)
-        if value is None:
-            return {}
-        return salt.payload.loads(value["Value"])
+        return {} if value is None else salt.payload.loads(value["Value"])
     except Exception as exc:  # pylint: disable=broad-except
-        raise SaltCacheError(
-            "There was an error reading the key, {}: {}".format(c_key, exc)
-        )
+        raise SaltCacheError(f"There was an error reading the key, {c_key}: {exc}")
 
 
 def flush(bank, key=None):
@@ -156,16 +150,14 @@ def flush(bank, key=None):
         c_key = bank
         tstamp_key = None
     else:
-        c_key = "{}/{}".format(bank, key)
-        tstamp_key = "{}/{}{}".format(bank, key, _tstamp_suffix)
+        c_key = f"{bank}/{key}"
+        tstamp_key = f"{bank}/{key}{_tstamp_suffix}"
     try:
         if tstamp_key:
             api.kv.delete(tstamp_key)
         return api.kv.delete(c_key, recurse=key is None)
     except Exception as exc:  # pylint: disable=broad-except
-        raise SaltCacheError(
-            "There was an error removing the key, {}: {}".format(c_key, exc)
-        )
+        raise SaltCacheError(f"There was an error removing the key, {c_key}: {exc}")
 
 
 def list_(bank):
@@ -173,19 +165,13 @@ def list_(bank):
     Return an iterable object containing all entries stored in the specified bank.
     """
     try:
-        _, keys = api.kv.get(bank + "/", keys=True, separator="/")
+        _, keys = api.kv.get(f"{bank}/", keys=True, separator="/")
     except Exception as exc:  # pylint: disable=broad-except
-        raise SaltCacheError(
-            'There was an error getting the key "{}": {}'.format(bank, exc)
-        )
+        raise SaltCacheError(f'There was an error getting the key "{bank}": {exc}')
     if keys is None:
         keys = []
     else:
-        # Any key could be a branch and a leaf at the same time in Consul
-        # so we have to return a list of unique names only.
-        out = set()
-        for key in keys:
-            out.add(key[len(bank) + 1 :].rstrip("/"))
+        out = {key[len(bank) + 1 :].rstrip("/") for key in keys}
         keys = [o for o in out if not o.endswith(_tstamp_suffix)]
     return keys
 
@@ -195,12 +181,10 @@ def contains(bank, key):
     Checks if the specified bank contains the specified key.
     """
     try:
-        c_key = "{}/{}".format(bank, key or "")
+        c_key = f'{bank}/{key or ""}'
         _, value = api.kv.get(c_key, keys=True)
     except Exception as exc:  # pylint: disable=broad-except
-        raise SaltCacheError(
-            "There was an error getting the key, {}: {}".format(c_key, exc)
-        )
+        raise SaltCacheError(f"There was an error getting the key, {c_key}: {exc}")
     return value is not None
 
 
@@ -209,13 +193,9 @@ def updated(bank, key):
     Return the Unix Epoch timestamp of when the key was last updated. Return
     None if key is not found.
     """
-    c_key = "{}/{}{}".format(bank, key, _tstamp_suffix)
+    c_key = f"{bank}/{key}{_tstamp_suffix}"
     try:
         _, value = api.kv.get(c_key)
-        if value is None:
-            return None
-        return salt.payload.loads(value["Value"])
+        return None if value is None else salt.payload.loads(value["Value"])
     except Exception as exc:  # pylint: disable=broad-except
-        raise SaltCacheError(
-            "There was an error reading the key, {}: {}".format(c_key, exc)
-        )
+        raise SaltCacheError(f"There was an error reading the key, {c_key}: {exc}")

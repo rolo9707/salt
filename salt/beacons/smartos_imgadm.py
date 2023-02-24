@@ -37,10 +37,9 @@ def __virtual__():
     """
     if "imgadm.list" in __salt__:
         return True
-    else:
-        err_msg = "Only available on SmartOS compute nodes."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
+    err_msg = "Only available on SmartOS compute nodes."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def validate(config):
@@ -79,7 +78,7 @@ def beacon(config):
     for uuid in current_images:
         event = {}
         if uuid not in IMGADM_STATE["images"]:
-            event["tag"] = "imported/{}".format(uuid)
+            event["tag"] = f"imported/{uuid}"
             for label in current_images[uuid]:
                 event[label] = current_images[uuid][label]
 
@@ -90,7 +89,7 @@ def beacon(config):
     for uuid in IMGADM_STATE["images"]:
         event = {}
         if uuid not in current_images:
-            event["tag"] = "deleted/{}".format(uuid)
+            event["tag"] = f"deleted/{uuid}"
             for label in IMGADM_STATE["images"][uuid]:
                 event[label] = IMGADM_STATE["images"][uuid][label]
 

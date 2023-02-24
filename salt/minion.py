@@ -118,14 +118,13 @@ def resolve_dns(opts, fallback=True):
     Resolves the master_ip and master_uri options
     """
     ret = {}
-    check_dns = True
-    if opts.get("file_client", "remote") == "local" and not opts.get(
-        "use_master_when_local", False
-    ):
-        check_dns = False
+    check_dns = bool(
+        opts.get("file_client", "remote") != "local"
+        or opts.get("use_master_when_local", False)
+    )
     import salt.utils.network
 
-    if check_dns is True:
+    if check_dns:
         try:
             if opts["master"] == "":
                 raise SaltSystemExit
@@ -139,7 +138,8 @@ def resolve_dns(opts, fallback=True):
                     if retry_dns_count is not None:
                         if retry_dns_count == 0:
                             raise SaltMasterUnresolvableError
-                        retry_dns_count -= 1
+                        else:
+                            retry_dns_count -= 1
                     log.error(
                         "Master hostname: '%s' not found or not responsive. "
                         "Retrying in %s seconds",
@@ -147,48 +147,39 @@ def resolve_dns(opts, fallback=True):
                         opts["retry_dns"],
                     )
                     time.sleep(opts["retry_dns"])
-                    try:
+                    with contextlib.suppress(SaltClientError):
                         ret["master_ip"] = salt.utils.network.dns_check(
                             opts["master"], int(opts["master_port"]), True, opts["ipv6"]
                         )
                         break
-                    except SaltClientError:
-                        pass
+            elif fallback:
+                ret["master_ip"] = "127.0.0.1"
             else:
-                if fallback:
-                    ret["master_ip"] = "127.0.0.1"
-                else:
-                    raise
+                raise
         except SaltSystemExit:
             unknown_str = "unknown address"
             master = opts.get("master", unknown_str)
             if master == "":
                 master = unknown_str
             if opts.get("__role") == "syndic":
-                err = (
-                    "Master address: '{}' could not be resolved. Invalid or"
-                    " unresolveable address. Set 'syndic_master' value in minion"
-                    " config.".format(master)
-                )
+                err = f"Master address: '{master}' could not be resolved. Invalid or unresolveable address. Set 'syndic_master' value in minion config."
             else:
-                err = (
-                    "Master address: '{}' could not be resolved. Invalid or"
-                    " unresolveable address. Set 'master' value in minion config.".format(
-                        master
-                    )
-                )
+                err = f"Master address: '{master}' could not be resolved. Invalid or unresolveable address. Set 'master' value in minion config."
             log.error(err)
             raise SaltSystemExit(code=42, msg=err)
     else:
         ret["master_ip"] = "127.0.0.1"
 
-    if "master_ip" in ret and "master_ip" in opts:
-        if ret["master_ip"] != opts["master_ip"]:
-            log.warning(
-                "Master ip address changed from %s to %s",
-                opts["master_ip"],
-                ret["master_ip"],
-            )
+    if (
+        "master_ip" in ret
+        and "master_ip" in opts
+        and ret["master_ip"] != opts["master_ip"]
+    ):
+        log.warning(
+            "Master ip address changed from %s to %s",
+            opts["master_ip"],
+            ret["master_ip"],
+        )
     if opts["source_interface_name"]:
         log.trace("Custom source interface required: %s", opts["source_interface_name"])
         interfaces = salt.utils.network.interfaces()
@@ -197,9 +188,9 @@ def resolve_dns(opts, fallback=True):
         if opts["source_interface_name"] in interfaces:
             if interfaces[opts["source_interface_name"]]["up"]:
                 addrs = (
-                    interfaces[opts["source_interface_name"]]["inet"]
-                    if not opts["ipv6"]
-                    else interfaces[opts["source_interface_name"]]["inet6"]
+                    interfaces[opts["source_interface_name"]]["inet6"]
+                    if opts["ipv6"]
+                    else interfaces[opts["source_interface_name"]]["inet"]
                 )
                 ret["source_ip"] = addrs[0]["address"]
                 log.debug("Using %s as source IP address", ret["source_ip"])
@@ -259,7 +250,7 @@ def prep_ip_port(opts):
             raise SaltClientError(exc)
         ret = {"master": host}
         if port:
-            ret.update({"master_port": port})
+            ret["master_port"] = port
 
     return ret
 
@@ -283,11 +274,7 @@ def get_proc_dir(cachedir, **kwargs):
     fn_ = os.path.join(cachedir, "proc")
     mode = kwargs.pop("mode", None)
 
-    if mode is None:
-        mode = {}
-    else:
-        mode = {"mode": mode}
-
+    mode = {} if mode is None else {"mode": mode}
     if not os.path.isdir(fn_):
         # proc_dir is not present, create it with mode settings
         os.makedirs(fn_, **mode)
@@ -338,26 +325,21 @@ def load_args_and_kwargs(func, args, data=None, ignore_invalid=False):
                     # **kwargs not in argspec and parsed argument name not in
                     # list of positional arguments. This keyword argument is
                     # invalid.
-                    invalid_kwargs.append("{}={}".format(key, val))
-            continue
-
-        else:
-            string_kwarg = salt.utils.args.parse_input([arg], condition=False)[
-                1
-            ]  # pylint: disable=W0632
-            if string_kwarg:
-                if argspec.keywords or next(iter(string_kwarg.keys())) in argspec.args:
+                    invalid_kwargs.append(f"{key}={val}")
+        elif string_kwarg := salt.utils.args.parse_input([arg], condition=False)[
+            1
+        ]:
+            if argspec.keywords or next(iter(string_kwarg.keys())) in argspec.args:
                     # Function supports **kwargs or is a positional argument to
                     # the function.
-                    _kwargs.update(string_kwarg)
-                else:
+                _kwargs |= string_kwarg
+            else:
                     # **kwargs not in argspec and parsed argument name not in
                     # list of positional arguments. This keyword argument is
                     # invalid.
-                    for key, val in string_kwarg.items():
-                        invalid_kwargs.append("{}={}".format(key, val))
-            else:
-                _args.append(arg)
+                invalid_kwargs.extend(f"{key}={val}" for key, val in string_kwarg.items())
+        else:
+            _args.append(arg)
 
     if invalid_kwargs and not ignore_invalid:
         salt.utils.args.invalid_kwargs(invalid_kwargs)
@@ -365,7 +347,7 @@ def load_args_and_kwargs(func, args, data=None, ignore_invalid=False):
     if argspec.keywords and isinstance(data, dict):
         # this function accepts **kwargs, pack in the publish data
         for key, val in data.items():
-            _kwargs["__pub_{}".format(key)] = val
+            _kwargs[f"__pub_{key}"] = val
 
     return _args, _kwargs
 
@@ -375,27 +357,28 @@ def eval_master_func(opts):
     Evaluate master function if master type is 'func'
     and save it result in opts['master']
     """
-    if "__master_func_evaluated" not in opts:
-        # split module and function and try loading the module
-        mod_fun = opts["master"]
-        mod, fun = mod_fun.split(".")
-        try:
-            master_mod = salt.loader.raw_mod(opts, mod, fun)
-            if not master_mod:
-                raise KeyError
-            # we take whatever the module returns as master address
-            opts["master"] = master_mod[mod_fun]()
-            # Check for valid types
-            if not isinstance(opts["master"], ((str,), list)):
-                raise TypeError
-            opts["__master_func_evaluated"] = True
-        except KeyError:
-            log.error("Failed to load module %s", mod_fun)
-            sys.exit(salt.defaults.exitcodes.EX_GENERIC)
-        except TypeError:
-            log.error("%s returned from %s is not a string", opts["master"], mod_fun)
-            sys.exit(salt.defaults.exitcodes.EX_GENERIC)
-        log.info("Evaluated master from module: %s", mod_fun)
+    if "__master_func_evaluated" in opts:
+        return
+    # split module and function and try loading the module
+    mod_fun = opts["master"]
+    mod, fun = mod_fun.split(".")
+    try:
+        master_mod = salt.loader.raw_mod(opts, mod, fun)
+        if not master_mod:
+            raise KeyError
+        # we take whatever the module returns as master address
+        opts["master"] = master_mod[mod_fun]()
+        # Check for valid types
+        if not isinstance(opts["master"], ((str,), list)):
+            raise TypeError
+        opts["__master_func_evaluated"] = True
+    except KeyError:
+        log.error("Failed to load module %s", mod_fun)
+        sys.exit(salt.defaults.exitcodes.EX_GENERIC)
+    except TypeError:
+        log.error("%s returned from %s is not a string", opts["master"], mod_fun)
+        sys.exit(salt.defaults.exitcodes.EX_GENERIC)
+    log.info("Evaluated master from module: %s", mod_fun)
 
 
 def master_event(type, master=None):
@@ -410,7 +393,7 @@ def master_event(type, master=None):
     }
 
     if type == "alive" and master is not None:
-        return "{}_{}".format(event_map.get(type), master)
+        return f"{event_map.get(type)}_{master}"
 
     return event_map.get(type, None)
 
@@ -503,10 +486,9 @@ class MinionBase:
         the pillar or grains changed
         """
         if "config.merge" in functions:
-            b_conf = functions["config.merge"](
+            if b_conf := functions["config.merge"](
                 "beacons", self.opts["beacons"], omit_opts=True
-            )
-            if b_conf:
+            ):
                 return self.beacons.process(
                     b_conf, self.opts["grains"]
                 )  # pylint: disable=no-member
@@ -658,6 +640,7 @@ class MinionBase:
         tries = opts.get("master_tries", 1)
         attempts = 0
 
+        pub_channel = None
         # if we have a list of masters, loop through them and be
         # happy with the first one that allows us to connect
         if isinstance(opts["master"], list):
@@ -698,7 +681,6 @@ class MinionBase:
                 log.error(msg)
                 raise SaltClientError(msg)
 
-            pub_channel = None
             while True:
                 if attempts != 0:
                     # Give up a little time between connection attempts
@@ -774,14 +756,12 @@ class MinionBase:
                     self.connected = True
                     raise salt.ext.tornado.gen.Return((opts["master"], pub_channel))
 
-        # single master sign in
         else:
             if opts["random_master"]:
                 log.warning(
                     "random_master is True but there is only one master specified."
                     " Ignoring."
                 )
-            pub_channel = None
             while True:
                 if attempts != 0:
                     # Give up a little time between connection attempts
@@ -834,46 +814,47 @@ class MinionBase:
         :return:
         """
         if (
-            self.opts["master"] == DEFAULT_MINION_OPTS["master"]
-            and self.opts["discovery"] is not False
+            self.opts["master"] != DEFAULT_MINION_OPTS["master"]
+            or self.opts["discovery"] is False
         ):
-            master_discovery_client = salt.utils.ssdp.SSDPDiscoveryClient()
-            masters = {}
-            for att in range(self.opts["discovery"].get("attempts", 3)):
-                try:
-                    att += 1
-                    log.info("Attempting %s time(s) to discover masters", att)
-                    masters.update(master_discovery_client.discover())
-                    if not masters:
-                        time.sleep(self.opts["discovery"].get("pause", 5))
-                    else:
-                        break
-                except Exception as err:  # pylint: disable=broad-except
-                    log.error("SSDP discovery failure: %s", err)
-                    break
-
-            if masters:
-                policy = self.opts.get("discovery", {}).get("match", "any")
-                if policy not in ["any", "all"]:
-                    log.error(
-                        'SSDP configuration matcher failure: unknown value "%s". '
-                        'Should be "any" or "all"',
-                        policy,
-                    )
+            return
+        master_discovery_client = salt.utils.ssdp.SSDPDiscoveryClient()
+        masters = {}
+        for att in range(self.opts["discovery"].get("attempts", 3)):
+            try:
+                att += 1
+                log.info("Attempting %s time(s) to discover masters", att)
+                masters |= master_discovery_client.discover()
+                if not masters:
+                    time.sleep(self.opts["discovery"].get("pause", 5))
                 else:
-                    mapping = self.opts["discovery"].get("mapping", {})
-                    for addr, mappings in masters.items():
-                        for proto_data in mappings:
-                            cnt = len(
-                                [
-                                    key
-                                    for key, value in mapping.items()
-                                    if proto_data.get("mapping", {}).get(key) == value
-                                ]
-                            )
-                            if policy == "any" and bool(cnt) or cnt == len(mapping):
-                                self.opts["master"] = proto_data["master"]
-                                return
+                    break
+            except Exception as err:  # pylint: disable=broad-except
+                log.error("SSDP discovery failure: %s", err)
+                break
+
+        if masters:
+            policy = self.opts.get("discovery", {}).get("match", "any")
+            if policy not in ["any", "all"]:
+                log.error(
+                    'SSDP configuration matcher failure: unknown value "%s". '
+                    'Should be "any" or "all"',
+                    policy,
+                )
+            else:
+                mapping = self.opts["discovery"].get("mapping", {})
+                for mappings in masters.values():
+                    for proto_data in mappings:
+                        cnt = len(
+                            [
+                                key
+                                for key, value in mapping.items()
+                                if proto_data.get("mapping", {}).get(key) == value
+                            ]
+                        )
+                        if policy == "any" and bool(cnt) or cnt == len(mapping):
+                            self.opts["master"] = proto_data["master"]
+                            return
 
     def _return_retry_timer(self):
         """
@@ -938,10 +919,7 @@ class SMinion(MinionBase):
             if not os.path.isdir(pdir):
                 os.makedirs(pdir, 0o700)
             ptop = os.path.join(pdir, "top.sls")
-            if self.opts["saltenv"] is not None:
-                penv = self.opts["saltenv"]
-            else:
-                penv = "base"
+            penv = self.opts["saltenv"] if self.opts["saltenv"] is not None else "base"
             cache_top = {penv: {self.opts["id"]: ["cache"]}}
             with salt.utils.files.fopen(ptop, "wb") as fp_:
                 salt.utils.yaml.safe_dump(cache_top, fp_, encoding=SLS_ENCODING)
@@ -1111,7 +1089,7 @@ class MinionManager(MinionBase):
                 s_opts["auth_timeout"],
                 False,
                 io_loop=self.io_loop,
-                loaded_base_name="salt.loader.{}".format(s_opts["master"]),
+                loaded_base_name=f'salt.loader.{s_opts["master"]}',
                 jid_queue=self.jid_queue,
             )
             self.io_loop.spawn_callback(self._connect_minion, minion)
@@ -1147,12 +1125,7 @@ class MinionManager(MinionBase):
                     auth_wait += self.auth_wait
                 yield salt.ext.tornado.gen.sleep(auth_wait)  # TODO: log?
             except SaltMasterUnresolvableError:
-                err = (
-                    "Master address: '{}' could not be resolved. Invalid or"
-                    " unresolveable address. Set 'master' value in minion config.".format(
-                        minion.opts["master"]
-                    )
-                )
+                err = f"""Master address: '{minion.opts["master"]}' could not be resolved. Invalid or unresolveable address. Set 'master' value in minion config."""
                 log.error(err)
                 break
             except Exception as e:  # pylint: disable=broad-except
@@ -1182,10 +1155,7 @@ class MinionManager(MinionBase):
 
     @property
     def restart(self):
-        for minion in self.minions:
-            if minion.restart:
-                return True
-        return False
+        return any(minion.restart for minion in self.minions)
 
     def stop(self, signum):
         for minion in self.minions:
@@ -1227,7 +1197,7 @@ class Minion(MinionBase):
         io_loop=None,
         jid_queue=None,
         load_grains=True,
-    ):  # pylint: disable=W0231
+    ):    # pylint: disable=W0231
         """
         Pass in the options dict
         """
@@ -1253,14 +1223,13 @@ class Minion(MinionBase):
             self.io_loop = io_loop
 
         # Warn if ZMQ < 3.2
-        if zmq:
-            if ZMQ_VERSION_INFO < (3, 2):
-                log.warning(
-                    "You have a version of ZMQ less than ZMQ 3.2! There are "
-                    "known connection keep-alive issues with ZMQ < 3.2 which "
-                    "may result in loss of contact with minions. Please "
-                    "upgrade your ZMQ!"
-                )
+        if zmq and ZMQ_VERSION_INFO < (3, 2):
+            log.warning(
+                "You have a version of ZMQ less than ZMQ 3.2! There are "
+                "known connection keep-alive issues with ZMQ < 3.2 which "
+                "may result in loss of contact with minions. Please "
+                "upgrade your ZMQ!"
+            )
         # Late setup of the opts grains, so we can log from the grains
         # module.  If this is a proxy, however, we need to init the proxymodule
         # before we can get the grains.  We do this for proxies in the

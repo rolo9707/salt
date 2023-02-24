@@ -18,12 +18,11 @@ last_state = {}
 def __virtual__():
 
     which_result = salt.utils.path.which("glxinfo")
-    if which_result is None:
-        err_msg = "glxinfo is missing."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
-    else:
+    if which_result is not None:
         return __virtualname__
+    err_msg = "glxinfo is missing."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def validate(config):

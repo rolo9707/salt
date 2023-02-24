@@ -195,8 +195,7 @@ class RotatingFileHandler(
                 ):
                     if self.level <= logging.WARNING:
                         sys.stderr.write(
-                            '[WARNING ] Unable to rotate the log file "{}" '
-                            "because it is in use\n".format(self.baseFilename)
+                            f'[WARNING ] Unable to rotate the log file "{self.baseFilename}" because it is in use\n'
                         )
                     handled = True
             finally:
@@ -244,8 +243,7 @@ if sys.version_info < (3, 7):
                 self.queue.put_nowait(record)
             except _queue.Full:
                 sys.stderr.write(
-                    "[WARNING ] Message queue is full, "
-                    'unable to write "{}" to log.\n'.format(record)
+                    f'[WARNING ] Message queue is full, unable to write "{record}" to log.\n'
                 )
 
         def prepare(self, record):
@@ -302,6 +300,5 @@ else:
                 self.queue.put_nowait(record)
             except _queue.Full:
                 sys.stderr.write(
-                    "[WARNING ] Message queue is full, "
-                    'unable to write "{}" to log.\n'.format(record)
+                    f'[WARNING ] Message queue is full, unable to write "{record}" to log.\n'
                 )

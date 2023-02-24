@@ -19,10 +19,9 @@ def __virtual__():
     """
     if salt.utils.path.which("strace"):
         return __virtualname__
-    else:
-        err_msg = "strace is missing."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
+    err_msg = "strace is missing."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def _get_shells():
@@ -46,9 +45,11 @@ def validate(config):
     Validate the beacon configuration
     """
     # Configuration for sh beacon should be a list of dicts
-    if not isinstance(config, list):
-        return False, "Configuration for sh beacon must be a list."
-    return True, "Valid beacon configuration"
+    return (
+        (True, "Valid beacon configuration")
+        if isinstance(config, list)
+        else (False, "Configuration for sh beacon must be a list.")
+    )
 
 
 def beacon(config):
@@ -64,15 +65,18 @@ def beacon(config):
     pkey = "sh.vt"
     shells = _get_shells()
     ps_out = __salt__["status.procs"]()
-    track_pids = []
-    for pid in ps_out:
-        if any(ps_out[pid].get("cmd", "").lstrip("-") in shell for shell in shells):
-            track_pids.append(pid)
+    track_pids = [
+        pid
+        for pid in ps_out
+        if any(
+            ps_out[pid].get("cmd", "").lstrip("-") in shell for shell in shells
+        )
+    ]
     if pkey not in __context__:
         __context__[pkey] = {}
     for pid in track_pids:
         if pid not in __context__[pkey]:
-            cmd = ["strace", "-f", "-e", "execve", "-p", "{}".format(pid)]
+            cmd = ["strace", "-f", "-e", "execve", "-p", f"{pid}"]
             __context__[pkey][pid] = {}
             __context__[pkey][pid]["vt"] = salt.utils.vt.Terminal(
                 cmd,

@@ -14,6 +14,7 @@
 """
 
 
+
 import logging
 import os
 import os.path
@@ -63,17 +64,16 @@ else:
     for key in EXPECTED_VARIABLES:
         if hasattr(__generated_syspaths, key):
             continue
-        else:
-            if typo_warning:
-                log.warning("Possible Typo?")
-                log.warning(
-                    "To dissolve this warning add `[variable] = None` to _syspaths.py"
-                )
-            typo_warning = False
-            log.warning("Variable %s is missing, value set to None", key)
-            setattr(
-                __generated_syspaths, key, None
-            )  # missing variables defaulted to None
+        if typo_warning:
+            log.warning("Possible Typo?")
+            log.warning(
+                "To dissolve this warning add `[variable] = None` to _syspaths.py"
+            )
+        typo_warning = False
+        log.warning("Variable %s is missing, value set to None", key)
+        setattr(
+            __generated_syspaths, key, None
+        )  # missing variables defaulted to None
 
 # Let's find out the path of this module
 if "SETUP_DIRNAME" in globals():
@@ -99,10 +99,8 @@ def _get_windows_root_dir():
     root_dir = salt.utils.win_reg.read_value(
         hive="HKLM", key="SOFTWARE\\Salt Project\\salt", vname="root_dir"
     )
-    if root_dir["success"]:
-        # Make sure vdata contains something
-        if root_dir["vdata"]:
-            return os.path.expandvars(root_dir["vdata"])
+    if root_dir["success"] and root_dir["vdata"]:
+        return os.path.expandvars(root_dir["vdata"])
 
     # If this key does not exist, then salt was not installed using the
     # new method installer. Could be pip or setup.py or an older version of the
@@ -124,11 +122,7 @@ def _get_windows_root_dir():
 ROOT_DIR = __generated_syspaths.ROOT_DIR
 if ROOT_DIR is None:
     # The installation time value was not provided, let's define the default
-    if __PLATFORM.startswith("win"):
-        ROOT_DIR = _get_windows_root_dir()
-    else:
-        ROOT_DIR = "/"
-
+    ROOT_DIR = _get_windows_root_dir() if __PLATFORM.startswith("win") else "/"
 CONFIG_DIR = __generated_syspaths.CONFIG_DIR
 if CONFIG_DIR is None:
     if __PLATFORM.startswith("win"):
