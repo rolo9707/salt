@@ -195,10 +195,9 @@ def __virtual__():
     """
     if salt.utils.napalm.virtual(__opts__, __virtualname__, __file__):
         return __virtualname__
-    else:
-        err_msg = "NAPALM is not installed."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
+    err_msg = "NAPALM is not installed."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def _compare(cur_cmp, cur_struct):
@@ -210,33 +209,29 @@ def _compare(cur_cmp, cur_struct):
         log.debug("Comparing dict to dict")
         for cmp_key, cmp_value in cur_cmp.items():
             if cmp_key == "*":
+                found = False
                 # matches any key from the source dictionary
                 if isinstance(cmp_value, dict):
-                    found = False
                     for _, cur_struct_val in cur_struct.items():
                         found |= _compare(cmp_value, cur_struct_val)
-                    return found
-                else:
-                    found = False
-                    if isinstance(cur_struct, (list, tuple)):
-                        for cur_ele in cur_struct:
-                            found |= _compare(cmp_value, cur_ele)
-                    elif isinstance(cur_struct, dict):
-                        for _, cur_ele in cur_struct.items():
-                            found |= _compare(cmp_value, cur_ele)
-                    return found
+                elif isinstance(cur_struct, (list, tuple)):
+                    for cur_ele in cur_struct:
+                        found |= _compare(cmp_value, cur_ele)
+                elif isinstance(cur_struct, dict):
+                    for _, cur_ele in cur_struct.items():
+                        found |= _compare(cmp_value, cur_ele)
             else:
                 if isinstance(cmp_value, dict):
-                    if cmp_key not in cur_struct:
+                    if cmp_key in cur_struct:
+                        return _compare(cmp_value, cur_struct[cmp_key])
+                    else:
                         return False
+                if not isinstance(cmp_value, list):
                     return _compare(cmp_value, cur_struct[cmp_key])
-                if isinstance(cmp_value, list):
-                    found = False
-                    for _, cur_struct_val in cur_struct.items():
-                        found |= _compare(cmp_value, cur_struct_val)
-                    return found
-                else:
-                    return _compare(cmp_value, cur_struct[cmp_key])
+                found = False
+                for _, cur_struct_val in cur_struct.items():
+                    found |= _compare(cmp_value, cur_struct_val)
+            return found
     elif isinstance(cur_cmp, (list, tuple)) and isinstance(cur_struct, (list, tuple)):
         log.debug("Comparing list to list")
         found = False
@@ -255,11 +250,7 @@ def _compare(cur_cmp, cur_struct):
         return cur_cmp == cur_struct
     elif isinstance(cur_cmp, ((str,), str)) and isinstance(cur_struct, ((str,), str)):
         log.debug("Comparing strings (and regex?): %s ? %s", cur_cmp, cur_struct)
-        # Trying literal match
-        matched = re.match(cur_cmp, cur_struct, re.I)
-        if matched:
-            return True
-        return False
+        return bool(matched := re.match(cur_cmp, cur_struct, re.I))
     elif isinstance(cur_cmp, ((int,), float)) and isinstance(
         cur_struct, ((int,), float)
     ):
@@ -271,9 +262,7 @@ def _compare(cur_cmp, cur_struct):
         log.debug(
             "Comparing a numeric value (%d) with a string (%s)", cur_struct, cur_cmp
         )
-        numeric_compare = _numeric_regex.match(cur_cmp)
-        # determine if the value to compare against is a mathematical operand
-        if numeric_compare:
+        if numeric_compare := _numeric_regex.match(cur_cmp):
             compare_value = numeric_compare.group(2)
             return getattr(
                 float(cur_struct), _numeric_operand[numeric_compare.group(1)]
@@ -294,11 +283,10 @@ def validate(config):
         if not isinstance(fun_cfg, dict):
             return (
                 False,
-                "The match structure for the {} execution function output must be a"
-                " dictionary".format(fun),
+                f"The match structure for the {fun} execution function output must be a dictionary",
             )
         if fun not in __salt__:
-            return False, "Execution function {} is not availabe!".format(fun)
+            return False, f"Execution function {fun} is not availabe!"
     return True, "Valid configuration for the napal beacon!"
 
 

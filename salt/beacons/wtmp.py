@@ -159,7 +159,7 @@ except ImportError:
 def __virtual__():
     if os.path.isfile(WTMP):
         return __virtualname__
-    err_msg = "{} does not exist.".format(WTMP)
+    err_msg = f"{WTMP} does not exist."
     log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
     return False, err_msg
 
@@ -176,7 +176,7 @@ def _validate_time_range(trange, status, msg):
         status = False
         msg = "The time_range parameter for wtmp beacon must be a dictionary."
 
-    if not all(k in trange for k in ("start", "end")):
+    if any(k not in trange for k in ("start", "end")):
         status = False
         msg = (
             "The time_range parameter for wtmp beacon must contain start & end options."
@@ -208,7 +208,7 @@ def _check_time_range(time_range, now):
         _start = dateutil_parser.parse(time_range["start"])
         _end = dateutil_parser.parse(time_range["end"])
 
-        return bool(_start <= now <= _end)
+        return _start <= now <= _end
     else:
         log.error("Dateutil is required.")
         return False
@@ -331,15 +331,11 @@ def beacon(config):
             if event["type"] == login_type:
                 event["action"] = "login"
                 # Store the tty to identify the logout event
-                __context__["{}{}".format(TTY_KEY_PREFIX, event["line"])] = event[
-                    "user"
-                ]
+                __context__[f'{TTY_KEY_PREFIX}{event["line"]}'] = event["user"]
             elif event["type"] == logout_type:
                 event["action"] = "logout"
                 try:
-                    event["user"] = __context__.pop(
-                        "{}{}".format(TTY_KEY_PREFIX, event["line"])
-                    )
+                    event["user"] = __context__.pop(f'{TTY_KEY_PREFIX}{event["line"]}')
                 except KeyError:
                     pass
 
@@ -352,16 +348,20 @@ def beacon(config):
                     if isinstance(_user, dict) and "time_range" in _user:
                         if _check_time_range(_user["time_range"], now):
                             ret.append(event)
-                    else:
-                        if defaults and "time_range" in defaults:
-                            if _check_time_range(defaults["time_range"], now):
-                                ret.append(event)
-                        else:
-                            ret.append(event)
-            else:
-                if defaults and "time_range" in defaults:
-                    if _check_time_range(defaults["time_range"], now):
+                    elif (
+                        defaults
+                        and "time_range" in defaults
+                        and _check_time_range(defaults["time_range"], now)
+                        or not defaults
+                        or "time_range" not in defaults
+                    ):
                         ret.append(event)
-                else:
-                    ret.append(event)
+            elif (
+                defaults
+                and "time_range" in defaults
+                and _check_time_range(defaults["time_range"], now)
+                or not defaults
+                or "time_range" not in defaults
+            ):
+                ret.append(event)
     return ret

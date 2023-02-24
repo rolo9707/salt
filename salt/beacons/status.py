@@ -103,9 +103,11 @@ def validate(config):
     """
     Validate the config is a dict
     """
-    if not isinstance(config, list):
-        return False, "Configuration for status beacon must be a list."
-    return True, "Valid beacon configuration"
+    return (
+        (True, "Valid beacon configuration")
+        if isinstance(config, list)
+        else (False, "Configuration for status beacon must be a list.")
+    )
 
 
 def __virtual__():
@@ -142,7 +144,7 @@ def beacon(config):
         for func in entry:
             ret[func] = {}
             try:
-                data = __salt__["status.{}".format(func)]()
+                data = __salt__[f"status.{func}"]()
             except salt.exceptions.CommandExecutionError as exc:
                 log.debug(
                     "Status beacon attempted to process function %s "
@@ -151,10 +153,7 @@ def beacon(config):
                     exc,
                 )
                 continue
-            if not isinstance(entry[func], list):
-                func_items = [entry[func]]
-            else:
-                func_items = entry[func]
+            func_items = entry[func] if isinstance(entry[func], list) else [entry[func]]
             for item in func_items:
                 if item == "all":
                     ret[func] = data
@@ -167,6 +166,6 @@ def beacon(config):
                     except KeyError as exc:
                         ret[
                             func
-                        ] = "Status beacon is incorrectly configured: {}".format(exc)
+                        ] = f"Status beacon is incorrectly configured: {exc}"
 
     return [{"tag": ctime, "data": ret}]

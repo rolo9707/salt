@@ -51,7 +51,7 @@ class LoggingMixinMeta(type):
     the bases.
     """
 
-    def __new__(mcs, name, bases, attrs):
+    def __new__(cls, name, bases, attrs):
         include_profile = include_trace = include_garbage = True
         bases = list(bases)
         if name == "SaltLoggingClass":
@@ -68,7 +68,7 @@ class LoggingMixinMeta(type):
             bases.append(LoggingTraceMixin)
         if include_garbage:
             bases.append(LoggingGarbageMixin)
-        return super().__new__(mcs, name, tuple(bases), attrs)
+        return super().__new__(cls, name, tuple(bases), attrs)
 
 
 class ExcInfoOnLogLevelFormatMixin:

@@ -44,20 +44,22 @@ def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for journald beacon should be a list of dicts
     if not isinstance(config, list):
         return (False, "Configuration for journald beacon must be a list.")
-    else:
-        config = salt.utils.beacons.list_to_dict(config)
+    config = salt.utils.beacons.list_to_dict(config)
 
-        for name in config.get("services", {}):
-            if not isinstance(config["services"][name], dict):
-                return (
-                    False,
-                    "Services configuration for journald beacon must be a list of"
-                    " dictionaries.",
-                )
-    return True, "Valid beacon configuration"
+    return next(
+        (
+            (
+                False,
+                "Services configuration for journald beacon must be a list of"
+                " dictionaries.",
+            )
+            for name in config.get("services", {})
+            if not isinstance(config["services"][name], dict)
+        ),
+        (True, "Valid beacon configuration"),
+    )
 
 
 def beacon(config):
@@ -91,9 +93,8 @@ def beacon(config):
             for key in config["services"][name]:
                 if isinstance(key, str):
                     key = salt.utils.data.decode(key)
-                if key in cur:
-                    if config["services"][name][key] == cur[key]:
-                        n_flag += 1
+                if key in cur and config["services"][name][key] == cur[key]:
+                    n_flag += 1
             if n_flag == len(config["services"][name]):
                 # Match!
                 sub = salt.utils.data.simple_types_filter(cur)

@@ -4,6 +4,7 @@ masters, encrypting and decrypting payloads, preparing messages, and
 authenticating peers
 """
 
+
 import base64
 import binascii
 import copy
@@ -62,19 +63,19 @@ if not HAS_M2:
     except ImportError:
         HAS_CRYPTO = False
 
-if not HAS_M2 and not HAS_CRYPTO:
-    try:
-        # let this be imported, if possible
-        from Crypto import Random  # nosec
-        from Crypto.Cipher import AES, PKCS1_OAEP  # nosec
-        from Crypto.Cipher import PKCS1_v1_5 as PKCS1_v1_5_CIPHER  # nosec
-        from Crypto.Hash import SHA  # nosec
-        from Crypto.PublicKey import RSA  # nosec
-        from Crypto.Signature import PKCS1_v1_5  # nosec
+    if not HAS_CRYPTO:
+        try:
+            # let this be imported, if possible
+            from Crypto import Random  # nosec
+            from Crypto.Cipher import AES, PKCS1_OAEP  # nosec
+            from Crypto.Cipher import PKCS1_v1_5 as PKCS1_v1_5_CIPHER  # nosec
+            from Crypto.Hash import SHA  # nosec
+            from Crypto.PublicKey import RSA  # nosec
+            from Crypto.Signature import PKCS1_v1_5  # nosec
 
-        HAS_CRYPTO = True
-    except ImportError:
-        HAS_CRYPTO = False
+            HAS_CRYPTO = True
+        except ImportError:
+            HAS_CRYPTO = False
 
 
 log = logging.getLogger(__name__)
@@ -121,8 +122,8 @@ def gen_keys(keydir, keyname, keysize, user=None, passphrase=None):
     :return: Path on the filesystem to the RSA private key
     """
     base = os.path.join(keydir, keyname)
-    priv = "{}.pem".format(base)
-    pub = "{}.pub".format(base)
+    priv = f"{base}.pem"
+    pub = f"{base}.pub"
 
     if HAS_M2:
         gen = RSA.gen_key(keysize, 65537, lambda: None)
@@ -137,9 +138,7 @@ def gen_keys(keydir, keyname, keysize, user=None, passphrase=None):
     # Do not try writing anything, if directory has no permissions.
     if not os.access(keydir, os.W_OK):
         raise OSError(
-            'Write access denied to "{}" for user "{}".'.format(
-                os.path.abspath(keydir), getpass.getuser()
-            )
+            f'Write access denied to "{os.path.abspath(keydir)}" for user "{getpass.getuser()}".'
         )
 
     with salt.utils.files.set_umask(0o277):
@@ -313,9 +312,8 @@ def private_encrypt(key, message):
     """
     if HAS_M2:
         return key.private_encrypt(message, salt.utils.rsax931.RSA_X931_PADDING)
-    else:
-        signer = salt.utils.rsax931.RSAX931Signer(key.exportKey("PEM"))
-        return signer.sign(message)
+    signer = salt.utils.rsax931.RSAX931Signer(key.exportKey("PEM"))
+    return signer.sign(message)
 
 
 def public_decrypt(pub, message):
@@ -330,9 +328,8 @@ def public_decrypt(pub, message):
     """
     if HAS_M2:
         return pub.public_decrypt(message, salt.utils.rsax931.RSA_X931_PADDING)
-    else:
-        verifier = salt.utils.rsax931.RSAX931Verifier(pub.exportKey("PEM"))
-        return verifier.verify(message)
+    verifier = salt.utils.rsax931.RSAX931Verifier(pub.exportKey("PEM"))
+    return verifier.verify(message)
 
 
 def pwdata_decrypt(rsa_key, pwdata):
@@ -425,7 +422,7 @@ class MasterKeys(dict):
         """
         Returns a key object for a key in the pki-dir
         """
-        path = os.path.join(self.opts["pki_dir"], name + ".pem")
+        path = os.path.join(self.opts["pki_dir"], f"{name}.pem")
         if not os.path.exists(path):
             log.info("Generating %s keys: %s", name, self.opts["pki_dir"])
             gen_keys(
@@ -435,14 +432,11 @@ class MasterKeys(dict):
                 self.opts.get("user"),
                 passphrase,
             )
-        if HAS_M2:
-            key_error = RSA.RSAError
-        else:
-            key_error = ValueError
+        key_error = RSA.RSAError if HAS_M2 else ValueError
         try:
             key = get_rsa_key(path, passphrase)
         except key_error as e:
-            message = "Unable to read key: {}; passphrase may be incorrect".format(path)
+            message = f"Unable to read key: {path}; passphrase may be incorrect"
             log.error(message)
             raise MasterExit(message)
         log.debug("Loaded %s key: %s", name, path)
@@ -453,7 +447,7 @@ class MasterKeys(dict):
         Return the string representation of a public key
         in the pki-directory
         """
-        path = os.path.join(self.opts["pki_dir"], name + ".pub")
+        path = os.path.join(self.opts["pki_dir"], f"{name}.pub")
         if not os.path.isfile(path):
             key = self.__get_keys()
             if HAS_M2:
@@ -777,9 +771,8 @@ class AsyncAuth:
         raise salt.ext.tornado.gen.Return(ret)
 
     def handle_signin_response(self, sign_in_payload, payload):
-        auth = {}
         m_pub_fn = os.path.join(self.opts["pki_dir"], self.mpub)
-        auth["master_uri"] = self.opts["master_uri"]
+        auth = {"master_uri": self.opts["master_uri"]}
         if not isinstance(payload, dict) or "load" not in payload:
             log.error("Sign-in attempt failed: %s", payload)
             return False
@@ -853,10 +846,9 @@ class AsyncAuth:
                 return "retry"
 
         if self.opts.get("syndic_master", False):  # Is syndic
-            syndic_finger = self.opts.get(
+            if syndic_finger := self.opts.get(
                 "syndic_finger", self.opts.get("master_finger", False)
-            )
-            if syndic_finger:
+            ):
                 if (
                     salt.utils.crypt.pem_finger(
                         m_pub_fn, sum_type=self.opts["hash_type"]
@@ -864,15 +856,11 @@ class AsyncAuth:
                     != syndic_finger
                 ):
                     self._finger_fail(syndic_finger, m_pub_fn)
-        else:
-            if self.opts.get("master_finger", False):
-                if (
-                    salt.utils.crypt.pem_finger(
-                        m_pub_fn, sum_type=self.opts["hash_type"]
-                    )
-                    != self.opts["master_finger"]
-                ):
-                    self._finger_fail(self.opts["master_finger"], m_pub_fn)
+        elif self.opts.get("master_finger", False) and (
+            salt.utils.crypt.pem_finger(m_pub_fn, sum_type=self.opts["hash_type"])
+            != self.opts["master_finger"]
+        ):
+            self._finger_fail(self.opts["master_finger"], m_pub_fn)
 
         auth["publish_port"] = payload["publish_port"]
         return auth
@@ -920,14 +908,12 @@ class AsyncAuth:
         :return: Payload dictionary
         :rtype: dict
         """
-        payload = {}
-        payload["cmd"] = "_auth"
-        payload["id"] = self.opts["id"]
-        payload["nonce"] = uuid.uuid4().hex
+        payload = {"cmd": "_auth", "id": self.opts["id"], "nonce": uuid.uuid4().hex}
         if "autosign_grains" in self.opts:
-            autosign_grains = {}
-            for grain in self.opts["autosign_grains"]:
-                autosign_grains[grain] = self.opts["grains"].get(grain, None)
+            autosign_grains = {
+                grain: self.opts["grains"].get(grain, None)
+                for grain in self.opts["autosign_grains"]
+            }
             payload["autosign_grains"] = autosign_grains
         try:
             pubkey_path = os.path.join(self.opts["pki_dir"], self.mpub)
@@ -978,39 +964,37 @@ class AsyncAuth:
         else:
             cipher = PKCS1_OAEP.new(key)
             key_str = cipher.decrypt(payload["aes"])
-        if "sig" in payload:
-            m_path = os.path.join(self.opts["pki_dir"], self.mpub)
-            if os.path.exists(m_path):
-                try:
-                    mkey = get_rsa_pub_key(m_path)
-                except Exception:  # pylint: disable=broad-except
-                    return "", ""
-                digest = hashlib.sha256(key_str).hexdigest()
-                digest = salt.utils.stringutils.to_bytes(digest)
-                if HAS_M2:
-                    m_digest = public_decrypt(mkey, payload["sig"])
-                else:
-                    m_digest = public_decrypt(mkey.publickey(), payload["sig"])
-                if m_digest != digest:
-                    return "", ""
-        else:
+        if "sig" not in payload:
             return "", ""
 
+        m_path = os.path.join(self.opts["pki_dir"], self.mpub)
+        if os.path.exists(m_path):
+            try:
+                mkey = get_rsa_pub_key(m_path)
+            except Exception:  # pylint: disable=broad-except
+                return "", ""
+            digest = hashlib.sha256(key_str).hexdigest()
+            digest = salt.utils.stringutils.to_bytes(digest)
+            m_digest = (
+                public_decrypt(mkey, payload["sig"])
+                if HAS_M2
+                else public_decrypt(mkey.publickey(), payload["sig"])
+            )
+            if m_digest != digest:
+                return "", ""
         key_str = salt.utils.stringutils.to_str(key_str)
 
         if "_|-" in key_str:
             return key_str.split("_|-")
-        else:
-            if "token" in payload:
-                if HAS_M2:
-                    token = key.private_decrypt(
-                        payload["token"], RSA.pkcs1_oaep_padding
-                    )
-                else:
-                    token = cipher.decrypt(payload["token"])
-                return key_str, token
-            elif not master_pub:
-                return key_str, ""
+        if "token" in payload:
+            token = (
+                key.private_decrypt(payload["token"], RSA.pkcs1_oaep_padding)
+                if HAS_M2
+                else cipher.decrypt(payload["token"])
+            )
+            return key_str, token
+        elif not master_pub:
+            return key_str, ""
         return "", ""
 
     def verify_pubkey_sig(self, message, sig):
@@ -1093,12 +1077,10 @@ class AsyncAuth:
         # master and minion sign and verify
         if "pub_sig" in payload and self.opts["verify_master_pubkey_sign"]:
             return True
-        # master and minion do NOT sign and do NOT verify
         elif "pub_sig" not in payload and not self.opts["verify_master_pubkey_sign"]:
             return True
 
-        # master signs, but minion does NOT verify
-        elif "pub_sig" in payload and not self.opts["verify_master_pubkey_sign"]:
+        elif "pub_sig" in payload:
             log.error(
                 "The masters sent its public-key signature, but signature "
                 "verification is not enabled on the minion. Either enable "
@@ -1106,8 +1088,7 @@ class AsyncAuth:
                 "the public key on the master!"
             )
             return False
-        # master does NOT sign but minion wants to verify
-        elif "pub_sig" not in payload and self.opts["verify_master_pubkey_sign"]:
+        else:
             log.error(
                 "The master did not send its public-key signature, but "
                 "signature verification is enabled on the minion. Either "
@@ -1140,10 +1121,10 @@ class AsyncAuth:
             except Exception:  # pylint: disable=broad-except
                 log.error("The master failed to decrypt the random minion token")
                 return ""
-            return aes
         else:
             aes, token = self.decrypt_aes(payload, master_pub)
-            return aes
+
+        return aes
 
     def verify_master(self, payload, master_pub=True):
         """
@@ -1174,55 +1155,49 @@ class AsyncAuth:
                     return ""
 
                 if self.opts["verify_master_pubkey_sign"]:
-                    if self.verify_signing_master(payload):
-                        return self.extract_aes(payload, master_pub=False)
-                    else:
-                        return ""
-                else:
-                    # This is not the last master we connected to
-                    log.error(
-                        "The master key has changed, the salt master could "
-                        "have been subverted, verify salt master's public "
-                        "key"
+                    return (
+                        self.extract_aes(payload, master_pub=False)
+                        if self.verify_signing_master(payload)
+                        else ""
                     )
-                    return ""
-
+                # This is not the last master we connected to
+                log.error(
+                    "The master key has changed, the salt master could "
+                    "have been subverted, verify salt master's public "
+                    "key"
+                )
             else:
                 if not self.check_auth_deps(payload):
                     return ""
-                # verify the signature of the pubkey even if it has
-                # not changed compared with the one we already have
-                if self.opts["always_verify_signature"]:
-                    if self.verify_signing_master(payload):
-                        return self.extract_aes(payload)
-                    else:
-                        log.error(
-                            "The masters public could not be verified. Is the "
-                            "verification pubkey %s up to date?",
-                            self.opts["master_sign_key_name"] + ".pub",
-                        )
-                        return ""
-
-                else:
+                if (
+                    self.opts["always_verify_signature"]
+                    and self.verify_signing_master(payload)
+                    or not self.opts["always_verify_signature"]
+                ):
                     return self.extract_aes(payload)
+                log.error(
+                    "The masters public could not be verified. Is the "
+                    "verification pubkey %s up to date?",
+                    self.opts["master_sign_key_name"] + ".pub",
+                )
+            return ""
+
         else:
             if not self.check_auth_deps(payload):
                 return ""
 
-            # verify the masters pubkey signature if the minion
-            # has not received any masters pubkey before
             if self.opts["verify_master_pubkey_sign"]:
-                if self.verify_signing_master(payload):
-                    return self.extract_aes(payload, master_pub=False)
-                else:
-                    return ""
-            else:
-                if not m_pub_exists:
-                    # the minion has not received any masters pubkey yet, write
-                    # the newly received pubkey to minion_master.pub
-                    with salt.utils.files.fopen(m_pub_fn, "wb+") as fp_:
-                        fp_.write(salt.utils.stringutils.to_bytes(payload["pub_key"]))
-                return self.extract_aes(payload, master_pub=False)
+                return (
+                    self.extract_aes(payload, master_pub=False)
+                    if self.verify_signing_master(payload)
+                    else ""
+                )
+            if not m_pub_exists:
+                # the minion has not received any masters pubkey yet, write
+                # the newly received pubkey to minion_master.pub
+                with salt.utils.files.fopen(m_pub_fn, "wb+") as fp_:
+                    fp_.write(salt.utils.stringutils.to_bytes(payload["pub_key"]))
+            return self.extract_aes(payload, master_pub=False)
 
     def _finger_fail(self, finger, master_key):
         log.critical(
@@ -1381,8 +1356,6 @@ class SAuth(AsyncAuth):
         with the publication port and the shared AES key.
 
         """
-        auth = {}
-
         auth_timeout = self.opts.get("auth_timeout", None)
         if auth_timeout is not None:
             timeout = auth_timeout
@@ -1395,8 +1368,7 @@ class SAuth(AsyncAuth):
 
         m_pub_fn = os.path.join(self.opts["pki_dir"], self.mpub)
 
-        auth["master_uri"] = self.opts["master_uri"]
-
+        auth = {"master_uri": self.opts["master_uri"]}
         close_channel = False
         if not channel:
             close_channel = True
@@ -1530,18 +1502,17 @@ class Crypticle:
             if ret_nonce != nonce:
                 raise SaltClientError("Nonce verification error")
         payload = salt.payload.loads(data, raw=raw)
-        if isinstance(payload, dict):
-            if "serial" in payload:
-                serial = payload.pop("serial")
-                if serial <= self.serial:
-                    log.critical(
-                        "A message with an invalid serial was received.\n"
-                        "this serial: %d\n"
-                        "last serial: %d\n"
-                        "The minion will not honor this request.",
-                        serial,
-                        self.serial,
-                    )
-                    return {}
-                self.serial = serial
+        if isinstance(payload, dict) and "serial" in payload:
+            serial = payload.pop("serial")
+            if serial <= self.serial:
+                log.critical(
+                    "A message with an invalid serial was received.\n"
+                    "this serial: %d\n"
+                    "last serial: %d\n"
+                    "The minion will not honor this request.",
+                    serial,
+                    self.serial,
+                )
+                return {}
+            self.serial = serial
         return payload

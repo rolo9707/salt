@@ -30,19 +30,17 @@ def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for ps beacon should be a list of dicts
     if not isinstance(config, list):
         return False, "Configuration for ps beacon must be a list."
-    else:
-        config = salt.utils.beacons.list_to_dict(config)
+    config = salt.utils.beacons.list_to_dict(config)
 
-        if "processes" not in config:
-            return False, "Configuration for ps beacon requires processes."
-        else:
-            if not isinstance(config["processes"], dict):
-                return False, "Processes for ps beacon must be a dictionary."
-
-    return True, "Valid beacon configuration"
+    if "processes" not in config:
+        return False, "Configuration for ps beacon requires processes."
+    return (
+        (True, "Valid beacon configuration")
+        if isinstance(config["processes"], dict)
+        else (False, "Processes for ps beacon must be a dictionary.")
+    )
 
 
 def beacon(config):
@@ -85,8 +83,7 @@ def beacon(config):
             if process not in procs:
                 ret_dict[process] = "Stopped"
                 ret.append(ret_dict)
-        else:
-            if process not in procs:
-                ret_dict[process] = False
-                ret.append(ret_dict)
+        elif process not in procs:
+            ret_dict[process] = False
+            ret.append(ret_dict)
     return ret

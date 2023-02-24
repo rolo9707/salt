@@ -4,6 +4,7 @@ Beacon to fire events at specific log messages.
 .. versionadded:: 2017.7.0
 
 """
+
 import logging
 
 import salt.utils.beacons
@@ -20,13 +21,7 @@ except ImportError:
 __virtualname__ = "log"
 LOC_KEY = "log.loc"
 
-SKEL = {}
-SKEL["tag"] = ""
-SKEL["match"] = "no"
-SKEL["raw"] = ""
-SKEL["error"] = ""
-
-
+SKEL = {"tag": "", "match": "no", "raw": "", "error": ""}
 log = logging.getLogger(__name__)
 
 
@@ -125,7 +120,7 @@ def beacon(config):
             if not config["tags"][tag]["regex"]:
                 continue
             try:
-                d[tag] = re.compile(r"{}".format(config["tags"][tag]["regex"]))
+                d[tag] = re.compile(f'{config["tags"][tag]["regex"]}')
             except Exception as e:  # pylint: disable=broad-except
                 event = SKEL.copy()
                 event["tag"] = tag
@@ -135,8 +130,7 @@ def beacon(config):
         for line in txt.splitlines():
             for tag, reg in d.items():
                 try:
-                    m = reg.match(line)
-                    if m:
+                    if m := reg.match(line):
                         event = SKEL.copy()
                         event["tag"] = tag
                         event["raw"] = line

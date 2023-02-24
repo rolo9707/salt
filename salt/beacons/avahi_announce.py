@@ -73,7 +73,7 @@ def validate(config):
     if not isinstance(config, list):
         return False, "Configuration for avahi_announce beacon must be a list."
 
-    elif not all(x in _config for x in ("servicetype", "port", "txt")):
+    elif any(x not in _config for x in ("servicetype", "port", "txt")):
         return (
             False,
             "Configuration for avahi_announce beacon must contain servicetype, port and txt items.",
@@ -95,10 +95,7 @@ def _enforce_txt_record_maxlen(key, value):
              appended to indicate that the entire value is not present.
     """
     # Add 1 for '=' separator between key and value
-    if len(key) + len(value) + 1 > 255:
-        # 255 - 3 ('...') - 1 ('=') = 251
-        return value[: 251 - len(key)] + "..."
-    return value
+    return f"{value[:251 - len(key)]}..." if len(key) + len(value) > 254 else value
 
 
 def beacon(config):
@@ -179,7 +176,7 @@ def beacon(config):
             changes["ipv6"] = __grains__.get("ipv6", [])
 
     for item in config["txt"]:
-        changes_key = "txt." + salt.utils.stringutils.to_unicode(item)
+        changes_key = f"txt.{salt.utils.stringutils.to_unicode(item)}"
         if config["txt"][item].startswith("grains."):
             grain = config["txt"][item][7:]
             grain_index = None

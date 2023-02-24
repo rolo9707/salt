@@ -25,10 +25,9 @@ __virtualname__ = "telegram_bot_msg"
 def __virtual__():
     if HAS_TELEGRAM:
         return __virtualname__
-    else:
-        err_msg = "telegram library is missing."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
+    err_msg = "telegram library is missing."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def validate(config):
@@ -48,14 +47,15 @@ def validate(config):
             "Not all required configuration for telegram_bot_msg are set.",
         )
 
-    if not isinstance(config.get("accept_from"), list):
-        return (
+    return (
+        (True, "Valid beacon configuration.")
+        if isinstance(config.get("accept_from"), list)
+        else (
             False,
             "Configuration for telegram_bot_msg, "
             "accept_from must be a list of usernames.",
         )
-
-    return True, "Valid beacon configuration."
+    )
 
 
 def beacon(config):
@@ -78,9 +78,7 @@ def beacon(config):
 
     log.debug("telegram_bot_msg beacon starting")
     ret = []
-    output = {}
-    output["msgs"] = []
-
+    output = {"msgs": []}
     bot = telegram.Bot(config["token"])
     updates = bot.get_updates(limit=100, timeout=0)
 

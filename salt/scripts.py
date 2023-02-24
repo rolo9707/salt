@@ -237,7 +237,7 @@ def salt_minion():
         signal.signal(signal.SIGINT, prev_sigint_handler)
         signal.signal(signal.SIGTERM, prev_sigterm_handler)
 
-        if not process.exitcode == salt.defaults.exitcodes.SALT_KEEPALIVE:
+        if process.exitcode != salt.defaults.exitcodes.SALT_KEEPALIVE:
             sys.exit(process.exitcode)
         # ontop of the random_reauth_delay already preformed
         # delay extra to reduce flooding and free resources
@@ -310,12 +310,11 @@ def proxy_minion_process(queue):
     finally:
         lock.acquire(blocking=True)
 
-    if restart is True:
+    if restart:
         log.warning("** Restarting proxy minion **")
         delay = 60
-        if proxyminion is not None:
-            if hasattr(proxyminion, "config"):
-                delay = proxyminion.config.get("random_reauth_delay", 60)
+        if proxyminion is not None and hasattr(proxyminion, "config"):
+            delay = proxyminion.config.get("random_reauth_delay", 60)
         random_delay = randint(1, delay)
         log.info("Sleeping random_reauth_delay of %s seconds", random_delay)
         # preform delay after minion resources have been cleaned
@@ -414,7 +413,7 @@ def salt_key():
         _install_signal_handlers(client)
         client.run()
     except Exception as err:  # pylint: disable=broad-except
-        sys.stderr.write("Error: {}\n".format(err))
+        sys.stderr.write(f"Error: {err}\n")
 
 
 def salt_cp():
@@ -469,7 +468,7 @@ def salt_ssh():
         _install_signal_handlers(client)
         client.run()
     except SaltClientError as err:
-        print(str(err), file=sys.stderr, flush=True)
+        print(err, file=sys.stderr, flush=True)
         try:
             if client.options.hard_crash:
                 trace = traceback.format_exc()
@@ -565,14 +564,13 @@ def salt_unity():
     """
     Change the args and redirect to another salt script
     """
-    avail = []
-    for fun in dir(sys.modules[__name__]):
-        if fun.startswith("salt"):
-            avail.append(fun[5:])
+    avail = [
+        fun[5:] for fun in dir(sys.modules[__name__]) if fun.startswith("salt")
+    ]
     if len(sys.argv) < 2:
         msg = "Must pass in a salt command, available commands are:"
         for cmd in avail:
-            msg += "\n{}".format(cmd)
+            msg += f"\n{cmd}"
         print(msg)
         sys.exit(1)
     cmd = sys.argv[1]
@@ -581,7 +579,7 @@ def salt_unity():
         sys.argv[0] = "salt"
         s_fun = salt_main
     else:
-        sys.argv[0] = "salt-{}".format(cmd)
+        sys.argv[0] = f"salt-{cmd}"
         sys.argv.pop(1)
-        s_fun = getattr(sys.modules[__name__], "salt_{}".format(cmd))
+        s_fun = getattr(sys.modules[__name__], f"salt_{cmd}")
     s_fun()

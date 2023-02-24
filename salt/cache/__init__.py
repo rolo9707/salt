@@ -22,10 +22,7 @@ def factory(opts, **kwargs):
     If memory caching is enabled by opts MemCache class will be instantiated.
     If not Cache class will be returned.
     """
-    if opts.get("memcache_expire_seconds", 0):
-        cls = MemCache
-    else:
-        cls = Cache
+    cls = MemCache if opts.get("memcache_expire_seconds", 0) else Cache
     return cls(opts, **kwargs)
 
 
@@ -70,11 +67,8 @@ class Cache:
 
     def __lazy_init(self):
         self._modules = salt.loader.cache(self.opts)
-        fun = "{}.init_kwargs".format(self.driver)
-        if fun in self.modules:
-            self._kwargs = self.modules[fun](self._kwargs)
-        else:
-            self._kwargs = {}
+        fun = f"{self.driver}.init_kwargs"
+        self._kwargs = self.modules[fun](self._kwargs) if fun in self.modules else {}
 
     @property
     def modules(self):
@@ -102,18 +96,15 @@ class Cache:
         update_cache = False
         if updated is None:
             update_cache = True
-        else:
-            if int(time.time()) - updated > expire_seconds:
-                update_cache = True
+        elif int(time.time()) - updated > expire_seconds:
+            update_cache = True
 
         data = self.fetch(bank, key)
 
-        if not data or update_cache is True:
+        if not data or update_cache:
             if loop_fun is not None:
-                data = []
                 items = fun(**kwargs)
-                for item in items:
-                    data.append(loop_fun(item))
+                data = [loop_fun(item) for item in items]
             else:
                 data = fun(**kwargs)
             self.store(bank, key, data)
@@ -141,7 +132,7 @@ class Cache:
             Raises an exception if cache driver detected an error accessing data
             in the cache backend (auth, permissions, etc).
         """
-        fun = "{}.store".format(self.driver)
+        fun = f"{self.driver}.store"
         return self.modules[fun](bank, key, data, **self._kwargs)
 
     def fetch(self, bank, key):
@@ -165,7 +156,7 @@ class Cache:
             Raises an exception if cache driver detected an error accessing data
             in the cache backend (auth, permissions, etc).
         """
-        fun = "{}.fetch".format(self.driver)
+        fun = f"{self.driver}.fetch"
         return self.modules[fun](bank, key, **self._kwargs)
 
     def updated(self, bank, key):
@@ -189,7 +180,7 @@ class Cache:
             Raises an exception if cache driver detected an error accessing data
             in the cache backend (auth, permissions, etc).
         """
-        fun = "{}.updated".format(self.driver)
+        fun = f"{self.driver}.updated"
         return self.modules[fun](bank, key, **self._kwargs)
 
     def flush(self, bank, key=None):
@@ -210,7 +201,7 @@ class Cache:
             Raises an exception if cache driver detected an error accessing data
             in the cache backend (auth, permissions, etc).
         """
-        fun = "{}.flush".format(self.driver)
+        fun = f"{self.driver}.flush"
         return self.modules[fun](bank, key=key, **self._kwargs)
 
     def list(self, bank):
@@ -229,7 +220,7 @@ class Cache:
             Raises an exception if cache driver detected an error accessing data
             in the cache backend (auth, permissions, etc).
         """
-        fun = "{}.list".format(self.driver)
+        fun = f"{self.driver}.list"
         return self.modules[fun](bank, **self._kwargs)
 
     def contains(self, bank, key=None):
@@ -254,7 +245,7 @@ class Cache:
             Raises an exception if cache driver detected an error accessing data
             in the cache backend (auth, permissions, etc).
         """
-        fun = "{}.contains".format(self.driver)
+        fun = f"{self.driver}.contains"
         return self.modules[fun](bank, key, **self._kwargs)
 
 
@@ -289,11 +280,8 @@ class MemCache(Cache):
                     break
 
     def _get_storage_id(self):
-        fun = "{}.storage_id".format(self.driver)
-        if fun in self.modules:
-            return self.modules[fun](self.kwargs)
-        else:
-            return self.driver
+        fun = f"{self.driver}.storage_id"
+        return self.modules[fun](self.kwargs) if fun in self.modules else self.driver
 
     @property
     def storage(self):
@@ -326,22 +314,20 @@ class MemCache(Cache):
 
         # Have no value for the key or value is expired
         data = super().fetch(bank, key)
+        if len(self.storage) >= self.max and self.cleanup:
+            MemCache.__cleanup(self.expire)
         if len(self.storage) >= self.max:
-            if self.cleanup:
-                MemCache.__cleanup(self.expire)
-            if len(self.storage) >= self.max:
-                self.storage.popitem(last=False)
+            self.storage.popitem(last=False)
         self.storage[(bank, key)] = [now, data]
         return data
 
     def store(self, bank, key, data):
         self.storage.pop((bank, key), None)
         super().store(bank, key, data)
+        if len(self.storage) >= self.max and self.cleanup:
+            MemCache.__cleanup(self.expire)
         if len(self.storage) >= self.max:
-            if self.cleanup:
-                MemCache.__cleanup(self.expire)
-            if len(self.storage) >= self.max:
-                self.storage.popitem(last=False)
+            self.storage.popitem(last=False)
         self.storage[(bank, key)] = [time.time(), data]
 
     def flush(self, bank, key=None):

@@ -23,26 +23,23 @@ __virtualname__ = "memusage"
 
 
 def __virtual__():
-    if HAS_PSUTIL is False:
-        err_msg = "psutil library is missing."
-        log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
-        return False, err_msg
-    else:
+    if HAS_PSUTIL is not False:
         return __virtualname__
+    err_msg = "psutil library is missing."
+    log.error("Unable to load %s beacon: %s", __virtualname__, err_msg)
+    return False, err_msg
 
 
 def validate(config):
     """
     Validate the beacon configuration
     """
-    # Configuration for memusage beacon should be a list of dicts
     if not isinstance(config, list):
         return False, "Configuration for memusage beacon must be a list."
-    else:
-        config = salt.utils.beacons.list_to_dict(config)
+    config = salt.utils.beacons.list_to_dict(config)
 
-        if "percent" not in config:
-            return False, "Configuration for memusage beacon requires percent."
+    if "percent" not in config:
+        return False, "Configuration for memusage beacon requires percent."
     return True, "Valid beacon configuration"
 
 

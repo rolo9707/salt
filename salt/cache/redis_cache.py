@@ -293,9 +293,7 @@ def _get_bank_redis_key(bank):
 
 def _get_timestamp_key(bank, key):
     opts = _get_redis_keys_opts()
-    return "{}{}{}/{}".format(
-        opts["timestamp_prefix"], opts["separator"], {bank}, {key}
-    )
+    return f'{opts["timestamp_prefix"]}{opts["separator"]}{{bank}}/{{key}}'
     # Use this line when we can use modern python
     # return f"{opts['timestamp_prefix']}{opts['separator']}{bank}/{key}"
 
@@ -345,7 +343,7 @@ def _get_banks_to_remove(redis_server, bank, path=""):
     A simple tree traversal algorithm that builds the list of banks to remove,
     starting from an arbitrary node in the tree.
     """
-    current_path = bank if not path else "{path}/{bank}".format(path=path, bank=bank)
+    current_path = "{path}/{bank}".format(path=path, bank=bank) if path else bank
     bank_paths_to_remove = [current_path]
     # as you got here, you'll be removed
 
@@ -411,9 +409,7 @@ def fetch(bank, key):
         )
         log.error(mesg)
         raise SaltCacheError(mesg)
-    if redis_value is None:
-        return {}
-    return salt.payload.loads(redis_value)
+    return {} if redis_value is None else salt.payload.loads(redis_value)
 
 
 def flush(bank, key=None):
@@ -534,9 +530,7 @@ def list_(bank):
         )
         log.error(mesg)
         raise SaltCacheError(mesg)
-    if not banks:
-        return []
-    return [bank.decode() for bank in banks if bank != b"."]
+    return [bank.decode() for bank in banks if bank != b"."] if banks else []
 
 
 def contains(bank, key):

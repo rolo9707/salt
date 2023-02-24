@@ -128,7 +128,7 @@ class SaltColorLogRecord(SaltLogRecord):
         self.colorprocess = "{}[{:>5}]{}".format(
             LOG_COLORS["process"], str(self.process), reset
         )
-        self.colormsg = "{}{}{}".format(cmsg, self.getMessage(), reset)
+        self.colormsg = f"{cmsg}{self.getMessage()}{reset}"
 
 
 def get_log_record_factory():
@@ -175,10 +175,7 @@ class SaltLoggingClass(LOGGING_LOGGER_CLASS, metaclass=LoggingMixinMeta):
             max_logger_length = len(
                 max(list(logging.Logger.manager.loggerDict), key=len)
             )
-            if max_logger_length > 80:
-                # Make sure the logger name on the formatted log record is not longer than 80 chars
-                # Messages which need more that 80 chars will use them, but not ALL log messages
-                max_logger_length = 80
+            max_logger_length = min(max_logger_length, 80)
             for handler in logging.root.handlers:
                 if handler is get_temp_handler():
                     continue
@@ -205,7 +202,7 @@ class SaltLoggingClass(LOGGING_LOGGER_CLASS, metaclass=LoggingMixinMeta):
                     return instance
 
                 digits = match.group("digits")
-                if not digits or not (digits and digits.isdigit()):
+                if not digits or not digits or not digits.isdigit():
                     # No valid digits. Release handler and return.
                     handler.release()
                     return instance
@@ -260,10 +257,7 @@ class SaltLoggingClass(LOGGING_LOGGER_CLASS, metaclass=LoggingMixinMeta):
                 )
             elif not isinstance(exc_info_on_loglevel, int):
                 raise RuntimeError(
-                    "The value of 'exc_info_on_loglevel' needs to be a "
-                    "logging level or a logging level name, not '{}'".format(
-                        exc_info_on_loglevel
-                    )
+                    f"The value of 'exc_info_on_loglevel' needs to be a logging level or a logging level name, not '{exc_info_on_loglevel}'"
                 )
         if extra is None:
             extra = {"exc_info_on_loglevel": exc_info_on_loglevel}
@@ -725,7 +719,7 @@ def setup_logfile_handler(
                     syslog_opts["address"] = str(path.resolve().parent)
             except OSError as exc:
                 raise LoggingRuntimeError(
-                    "Failed to setup the Syslog logging handler: {}".format(exc)
+                    f"Failed to setup the Syslog logging handler: {exc}"
                 ) from exc
         elif parsed_log_path.path:
             # In case of udp or tcp with a facility specified
@@ -735,7 +729,7 @@ def setup_logfile_handler(
                 # Logging facilities start with LOG_ if this is not the case
                 # fail right now!
                 raise LoggingRuntimeError(
-                    "The syslog facility '{}' is not known".format(facility_name)
+                    f"The syslog facility '{facility_name}' is not known"
                 )
         else:
             # This is the case of udp or tcp without a facility specified
@@ -746,7 +740,7 @@ def setup_logfile_handler(
             # This python syslog version does not know about the user provided
             # facility name
             raise LoggingRuntimeError(
-                "The syslog facility '{}' is not known".format(facility_name)
+                f"The syslog facility '{facility_name}' is not known"
             )
         syslog_opts["facility"] = facility
 
@@ -766,7 +760,7 @@ def setup_logfile_handler(
             handler = SysLogHandler(**syslog_opts)
         except OSError as exc:
             raise LoggingRuntimeError(
-                "Failed to setup the Syslog logging handler: {}".format(exc)
+                f"Failed to setup the Syslog logging handler: {exc}"
             ) from exc
     else:
         # make sure, the logging directory exists and attempt to create it if necessary
@@ -839,17 +833,14 @@ def is_extended_logging_configured():
     Are the extended logging handlers configured
     """
     extended_logging_handlers = get_extended_logging_handlers()
-    if extended_logging_handlers is None:
-        return False
-    return True
+    return extended_logging_handlers is not None
 
 
 def shutdown_extended_logging():
     """
     Shutdown the extended logging handlers
     """
-    extended_logging_handlers = get_extended_logging_handlers()
-    if extended_logging_handlers:
+    if extended_logging_handlers := get_extended_logging_handlers():
         for handler in extended_logging_handlers:
             logging.root.removeHandler(handler)
             handler.close()
@@ -919,11 +910,11 @@ def setup_extended_logging(opts):
             additional_handlers.append(handler)
             logging.root.addHandler(handler)
 
-    for handler in logging.root.handlers:
-        if handler in initial_handlers:
-            continue
-        additional_handlers.append(handler)
-
+    additional_handlers.extend(
+        handler
+        for handler in logging.root.handlers
+        if handler not in initial_handlers
+    )
     setup_extended_logging.__handlers__ = additional_handlers
 
 
@@ -1053,18 +1044,9 @@ def __global_logging_exception_handler(
     # Log the exception
     msg = "An un-handled exception was caught by Salt's global exception handler:"
     try:
-        msg = "{}\n{}: {}\n{}".format(
-            msg,
-            exc_type.__name__,
-            exc_value,
-            "".join(_format_exception(exc_type, exc_value, exc_traceback)).strip(),
-        )
+        msg = f'{msg}\n{exc_type.__name__}: {exc_value}\n{"".join(_format_exception(exc_type, exc_value, exc_traceback)).strip()}'
     except Exception:  # pylint: disable=broad-except
-        msg = "{}\n{}: {}\n(UNABLE TO FORMAT TRACEBACK)".format(
-            msg,
-            exc_type.__name__,
-            exc_value,
-        )
+        msg = f"{msg}\n{exc_type.__name__}: {exc_value}\n(UNABLE TO FORMAT TRACEBACK)"
     try:
         _logger.error(msg)
     except Exception:  # pylint: disable=broad-except

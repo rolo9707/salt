@@ -19,8 +19,7 @@ def _nested_output(obj):
     from salt.output import nested
 
     nested.__opts__ = {}
-    ret = nested.output(obj).rstrip()
-    return ret
+    return nested.output(obj).rstrip()
 
 
 def get_error_message(error):
@@ -284,7 +283,7 @@ class SaltRenderError(SaltException):
         self.buffer = buf
         self.context = ""
         if trace:
-            exc_str += "\n{}\n".format(trace)
+            exc_str += f"\n{trace}\n"
         if self.line_num and self.buffer:
             # Avoid circular import
             import salt.utils.templates
@@ -292,10 +291,7 @@ class SaltRenderError(SaltException):
             self.context = salt.utils.stringutils.get_context(
                 self.buffer, self.line_num, marker=marker
             )
-            exc_str += "; line {}\n\n{}".format(
-                self.line_num,
-                salt.utils.stringutils.to_unicode(self.context),
-            )
+            exc_str += f"; line {self.line_num}\n\n{salt.utils.stringutils.to_unicode(self.context)}"
         super().__init__(exc_str)
 
 
